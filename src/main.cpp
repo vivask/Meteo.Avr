@@ -1,8 +1,17 @@
 #include <MICS6814.h>
+#include <tinySPI.h>
 
-#define PIN_CO  0
-#define PIN_NO2 1
-#define PIN_NH3 2
+#define NOT_USE   (-1)
+
+#define PIN_CO    PB3
+#define PIN_NO2   PB4
+#define PIN_NH3   PB5
+
+#define PIN_MOSI  PB1
+#define PIN_SCK   PB2
+#define PIN_RST   PB0
+
+volatile byte rst = 0;
 
 MICS6814 gas(PIN_CO, PIN_NO2, PIN_NH3);
 
@@ -13,57 +22,62 @@ typedef struct{
   float meashure;
 }meashure_6814_t;
 
-int incomingByte = 0; // for incoming serial data
+void (* resetFunc) (void) = 0;
+
+ISR(INT0_vect) {
+  rst = digitalRead(PIN_RST);
+}
 
 void setup() {
-  Serial.begin(9600);
-  Serial.println("Calibrate...");
-  gas.calibrate();
-  Serial.println("Calibrate success");
+ 
+  /* SPI configure */
+  SPI.begin(PIN_MOSI, NOT_USE, PIN_SCK);
+
+  /* External Interrupt configure */
+  GIMSK |= (1 << INT0); // enable external interrupt
+  MCUCR |= (1 << ISC00); // CHANGE mode
+  pinMode(PIN_RST, INPUT_PULLUP);
+
+  /* MICS6814 calibrate */
+  // gas.calibrate();
 }
 
 void loop() {
-  meashure_6814_t data[3];
+  meashure_6814_t data[3] = {0};
 
-  data[CO] = {
-    resistance: gas.getResistance(CH_CO),
-    base_reistance: gas.getBaseResistance(CH_CO),
-    current_ratio: gas.getCurrentRatio(CH_CO),
-    meashure: gas.measure(CO),
-  };
-  delay(50);
-
-  data[NO2] = {
-    resistance: gas.getResistance(CH_NO2),
-    base_reistance: gas.getBaseResistance(CH_NO2),
-    current_ratio: gas.getCurrentRatio(CH_NO2),
-    meashure: gas.measure(NO2),
-  };
-  delay(50);
-
-  data[NH3] = {
-    resistance: gas.getResistance(CH_NH3),
-    base_reistance: gas.getBaseResistance(CH_NH3),
-    current_ratio: gas.getCurrentRatio(CH_NH3),
-    meashure: gas.measure(NH3),
-  };
-
-  /*Serial.print("CO: ");
-  Serial.println(data[CO].meashure);
-  Serial.print("NO2: ");
-  Serial.println(data[NO2].meashure);
-  Serial.print("NH3: ");
-  Serial.println(data[NH3].meashure);*/
-  Serial.write((byte*)data, sizeof(data));
-
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    incomingByte = Serial.read();
-
-    // say what you got:
-    Serial.print("I received: ");
-    Serial.println(incomingByte, DEC);
+  if ( rst ) {
+    resetFunc();
+    delay(100);
   }
 
+  // data[CO] = {
+  //   resistance: gas.getResistance(CH_CO),
+  //   base_reistance: gas.getBaseResistance(CH_CO),
+  //   current_ratio: gas.getCurrentRatio(CH_CO),
+  //   meashure: gas.measure(CO),
+  // };
+  // delay(50);
+
+  // data[NO2] = {
+  //   resistance: gas.getResistance(CH_NO2),
+  //   base_reistance: gas.getBaseResistance(CH_NO2),
+  //   current_ratio: gas.getCurrentRatio(CH_NO2),
+  //   meashure: gas.measure(NO2),
+  // };
+  // delay(50);
+
+  // data[NH3] = {
+  //   resistance: gas.getResistance(CH_NH3),
+  //   base_reistance: gas.getBaseResistance(CH_NH3),
+  //   current_ratio: gas.getCurrentRatio(CH_NH3),
+  //   meashure: gas.measure(NH3),
+  // };
+
+  uint8_t* p =  (uint8_t*)data;
+
+  for (uint8_t i=0; i < sizeof(data); i++) {
+    SPI.transfer(p[i]);
+  }
+  
   delay(1000);
 }
