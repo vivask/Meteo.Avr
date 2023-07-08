@@ -1,83 +1,83 @@
-#include <MICS6814.h>
-#include <tinySPI.h>
+#include <Wire.h>
+#include <SPI.h>
+#include "MICS6814.h"
 
-#define NOT_USE   (-1)
+#define PIN_NO2   16
+#define PIN_NH3   17
+#define PIN_CO    15
 
-#define PIN_CO    PB3
-#define PIN_NO2   PB4
-#define PIN_NH3   PB5
+#define PIN_INT   3
+#define PIN_RST   4
 
-#define PIN_MOSI  PB1
-#define PIN_SCK   PB2
-#define PIN_RST   PB0
+#define STABLE_TIME 20 //µs
+#define RESET_COUNT 11
 
-volatile byte rst = 0;
+volatile unsigned long previousTime;
+volatile unsigned long pulse_counter = 0;
 
 MICS6814 gas(PIN_CO, PIN_NO2, PIN_NH3);
 
-typedef struct{
-  uint16_t resistance;
-  uint16_t base_reistance;
-  float current_ratio;
-  float meashure;
-}meashure_6814_t;
+static void reset() {
+  // set low reset pin
+  digitalWrite(PIN_RST, LOW);
+  delay(100);
+}
 
-void (* resetFunc) (void) = 0;
-
-ISR(INT0_vect) {
-  rst = digitalRead(PIN_RST);
+static void interrupt_handler() {
+  unsigned long currentTime = micros();
+  if (currentTime - previousTime >= STABLE_TIME) pulse_counter++;
+  previousTime = currentTime;  
+  if (pulse_counter == RESET_COUNT) {
+    reset();
+  }
 }
 
 void setup() {
- 
-  /* SPI configure */
-  SPI.begin(PIN_MOSI, NOT_USE, PIN_SCK);
+  Serial.begin(9600);
+  while (!Serial) {
+    delay(1);
+    yield();
+  };
 
-  /* External Interrupt configure */
-  GIMSK |= (1 << INT0); // enable external interrupt
-  MCUCR |= (1 << ISC00); // CHANGE mode
-  pinMode(PIN_RST, INPUT_PULLUP);
+  // RST configure
+  pinMode(PIN_INT, INPUT);
+  attachInterrupt(digitalPinToInterrupt(PIN_INT), interrupt_handler, FALLING); 
+  digitalWrite(PIN_RST, HIGH); 
+  pinMode(PIN_RST, OUTPUT);
 
-  /* MICS6814 calibrate */
-  // gas.calibrate();
+  // SPI configure
+  SPI.begin();
+  SPI.setClockDivider(SPI_CLOCK_DIV8); //divide the clock by 8
+
+  // MICS6814 calibrate
+  gas.calibrate();
+
 }
 
 void loop() {
-  meashure_6814_t data[3] = {0};
 
-  if ( rst ) {
-    resetFunc();
-    delay(100);
+  // reset rst pulse counter
+  pulse_counter = 0;
+
+  mics6814_data_t* data = gas.measure();
+
+  Serial.print("CO: ");
+  Serial.println(data->co);
+  Serial.print("NO2: ");
+  Serial.println(data->no2);
+  Serial.print("NH3: ");
+  Serial.println(data->nh3);
+  Serial.print("Status: ");
+  Serial.println(data->status);
+
+  // check calibration result
+  if (data->status == MICS6814_FAIL) {
+    // calibration fail
+    reset();
   }
 
-  // data[CO] = {
-  //   resistance: gas.getResistance(CH_CO),
-  //   base_reistance: gas.getBaseResistance(CH_CO),
-  //   current_ratio: gas.getCurrentRatio(CH_CO),
-  //   meashure: gas.measure(CO),
-  // };
-  // delay(50);
+  gas.spiTransfer(data);
 
-  // data[NO2] = {
-  //   resistance: gas.getResistance(CH_NO2),
-  //   base_reistance: gas.getBaseResistance(CH_NO2),
-  //   current_ratio: gas.getCurrentRatio(CH_NO2),
-  //   meashure: gas.measure(NO2),
-  // };
-  // delay(50);
-
-  // data[NH3] = {
-  //   resistance: gas.getResistance(CH_NH3),
-  //   base_reistance: gas.getBaseResistance(CH_NH3),
-  //   current_ratio: gas.getCurrentRatio(CH_NH3),
-  //   meashure: gas.measure(NH3),
-  // };
-
-  uint8_t* p =  (uint8_t*)data;
-
-  for (uint8_t i=0; i < sizeof(data); i++) {
-    SPI.transfer(p[i]);
-  }
-  
   delay(1000);
 }
+

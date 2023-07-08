@@ -1,3 +1,4 @@
+#include <SPI.h>
 #include "MICS6814.h"
 
 MICS6814::MICS6814(int pinCO, int pinNO2, int pinNH3)
@@ -5,6 +6,8 @@ MICS6814::MICS6814(int pinCO, int pinNO2, int pinNH3)
 	_pinCO  = pinCO;
 	_pinNO2 = pinNO2;
 	_pinNH3 = pinNH3;
+	memset(&_data, 0x00, sizeof(mics6814_data_t));
+	_data.status = MICS6814_FAIL;
 }
 
 /**
@@ -20,6 +23,7 @@ MICS6814::MICS6814(int pinCO, int pinNO2, int pinNH3)
  */
 void MICS6814::calibrate()
 {
+	Serial.print("\nCalibrate");
 	// Кол-во секунд, которые должны пройти прежде,
 	//   чем мы будем считать, что каллибровка завершена
 	// (Меньше 64 секунд, чтобы избежать переполнения)
@@ -64,6 +68,8 @@ void MICS6814::calibrate()
 	// Калибруем
 	do
 	{
+		_data.status = MICS6814_CAL;
+
 		delay(1000);
 
 		unsigned long rs = 0;
@@ -112,16 +118,29 @@ void MICS6814::calibrate()
 		isStableNH3 = abs(fltSumNH3 / seconds - curNH3) < delta;
 		isStableCO  = abs(fltSumCO  / seconds - curCO)  < delta;
 		isStableNO2 = abs(fltSumNO2 / seconds - curNO2) < delta;
-
 		// Указатель на буфер
 		pntrNH3 = (pntrNH3 + 1) % seconds;
 		pntrCO  = (pntrCO  + 1) % seconds;
 		pntrNO2 = (pntrNO2 + 1) % seconds;
+
+		spiTransfer(&_data);
+		Serial.print(".");
 	} while (!isStableNH3 || !isStableCO || !isStableNO2);
 
 	_baseNH3 = fltSumNH3 / seconds;
 	_baseCO  = fltSumCO  / seconds;
 	_baseNO2 = fltSumNO2 / seconds;
+	Serial.println("");
+	Serial.println("Calibrate success");
+}
+
+void MICS6814::spiTransfer(mics6814_data_t* data) {
+  uint8_t* p = (uint8_t*)data;
+
+  for (size_t i=0; i < sizeof(mics6814_data_t); i++) {
+    uint8_t body = p[i];
+    SPI.transfer(body);
+  }
 }
 
 void MICS6814::loadCalibrationData(
@@ -165,6 +184,24 @@ float MICS6814::measure(gas_t gas)
 	}
 
 	return isnan(c) ? -1 : c;
+}
+
+/**
+ * Измеряет концентрацию газа в промилле для всех доступных газов.
+ *
+ * @return
+ * Указатель на структуру mics6814_data_t.
+ */
+mics6814_data_t* MICS6814::measure()
+{
+    const float inf = 1.0/0.0;
+
+	_data.co = measure(CO);
+	_data.nh3 = measure(NH3);
+	_data.no2 = measure(NO2);
+  	_data.status = (_data.co == inf || _data.no2 == inf || _data.nh3 == inf) ? MICS6814_FAIL : MICS6814_OK;
+
+	return &_data;
 }
 
 /**
