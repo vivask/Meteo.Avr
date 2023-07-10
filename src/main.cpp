@@ -15,6 +15,8 @@
 volatile unsigned long previousTime;
 volatile unsigned long pulse_counter = 0;
 
+static uint8_t devCO = 0;
+
 MICS6814 gas(PIN_CO, PIN_NO2, PIN_NH3);
 
 static void reset() {
@@ -51,7 +53,10 @@ void setup() {
 
   // MICS6814 calibrate
   gas.calibrate();
-
+  mics6814_data_t* data = gas.measure();
+  if ((uint8_t)data->co <= 2) {
+    devCO = (uint8_t)data->co;
+  }
 }
 
 void loop() {
@@ -60,6 +65,8 @@ void loop() {
   pulse_counter = 0;
 
   mics6814_data_t* data = gas.measure();
+
+  data->co -= devCO;
 
   Serial.print("CO: ");
   Serial.println(data->co);

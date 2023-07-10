@@ -78,6 +78,10 @@ void MICS6814::calibrate()
 		for (int i = 0; i < 3; i++)
 		{
 			delay(1);
+			// int nh3 = analogRead(_pinNH3);
+			// rs += nh3;
+			// Serial.print("_NH3: ");
+			// Serial.println(nh3);
 			rs += analogRead(_pinNH3);
 		}
 
@@ -88,6 +92,10 @@ void MICS6814::calibrate()
 		for (int i = 0; i < 3; i++)
 		{
 			delay(1);
+			// int co = analogRead(_pinCO);
+			// rs += co;
+			// Serial.print("_CO: ");
+			// Serial.println(co);
 			rs += analogRead(_pinCO);
 		}
 
@@ -98,6 +106,10 @@ void MICS6814::calibrate()
 		for (int i = 0; i < 3; i++)
 		{
 			delay(1);
+			// int no2 = analogRead(_pinNO2);
+			// rs += no2;
+			// Serial.print("_NO2: ");
+			// Serial.println(no2);
 			rs += analogRead(_pinNO2);
 		}
 
